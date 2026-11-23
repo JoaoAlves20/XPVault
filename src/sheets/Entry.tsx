@@ -196,7 +196,7 @@ export function AddEntrySheet({ mode: initMode, editId, assetId, moveKind, accou
             ))}
           </View>
           {accs.find((a) => a.id === accId)?.kind === 'benefit' ? (
-            <T v="small" color={C.mute}>Vale: entra no saldo do vale, mas fica fora do patrimônio e dos totais.</T>
+            <T v="small" color={C.mute}>Vale: sai do saldo do vale e conta no orçamento da categoria, mas fica fora do patrimônio e dos totais.</T>
           ) : null}
         </Block>
 

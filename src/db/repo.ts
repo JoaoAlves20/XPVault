@@ -322,8 +322,8 @@ export interface Budget { id: number; name: string; code: string; color: string;
 export function budgets(ym: string): Budget[] {
   return all<Budget>(
     `SELECT c.id, c.name, c.code, c.color, c.budget_cents AS budget,
-       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='done' AND ${notBenefit('t.account_id')} AND substr(t.date,1,7)=?), 0) AS spent,
-       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='planned' AND ${notBenefit('t.account_id')} AND substr(t.date,1,7)=?), 0) AS planned
+       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='done' AND substr(t.date,1,7)=?), 0) AS spent,
+       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='planned' AND substr(t.date,1,7)=?), 0) AS planned
      FROM categories c WHERE c.archived=0 AND c.kind='expense' AND c.budget_cents > 0 ORDER BY c.id`,
     [ym, ym],
   );
