@@ -7,7 +7,8 @@ export type Status = 'planned' | 'done' | 'skipped';
 export type RepeatMode = 'forever' | 'count' | 'until';
 export type Scope = 'one' | 'future' | 'all';
 
-export interface Account { id: number; name: string; color: string; initial_cents: number; archived: number; balance: number }
+export type AccountKind = 'regular' | 'benefit';
+export interface Account { id: number; name: string; color: string; initial_cents: number; archived: number; kind: AccountKind; balance: number }
 export interface Category { id: number; name: string; kind: Kind; code: string; color: string; budget_cents: number | null; archived: number }
 export interface Recurrence {
   id: number; kind: Kind; amount_cents: number; description: string; category_id: number | null; account_id: number | null;
@@ -16,7 +17,7 @@ export interface Recurrence {
 export interface Tx {
   id: number; kind: Kind; amount_cents: number; description: string; category_id: number | null; account_id: number | null;
   date: string; status: Status; recurrence_id: number | null; seq: number | null; created_at: string;
-  cat_name: string | null; cat_code: string | null; cat_color: string | null; acc_name: string | null;
+  cat_name: string | null; cat_code: string | null; cat_color: string | null; acc_name: string | null; acc_kind: AccountKind | null;
   rec_mode: RepeatMode | null; rec_total: number | null; rec_first: number | null; rec_until: string | null;
 }
 export type AssetType = 'rf' | 'tesouro' | 'acoes' | 'fii' | 'cripto' | 'prev' | 'outro';
@@ -34,6 +35,10 @@ export const ASSET_TYPES: { id: AssetType; label: string }[] = [
   { id: 'outro', label: 'Outro' },
 ];
 export const assetTypeLabel = (t: string) => ASSET_TYPES.find((a) => a.id === t)?.label ?? 'Outro';
+
+/** Filtro SQL: lançamento fora das contas de benefício (VR/VT/VA). */
+const notBenefit = (col = 'account_id') =>
+  `(${col} IS NULL OR ${col} NOT IN (SELECT id FROM accounts WHERE kind = 'benefit'))`;
 
 // ───────────────────────── Recorrência ─────────────────────────
 /** Rótulo "5/12", "∞" ou "até DEZ/27". */
@@ -125,7 +130,7 @@ export function addEntry(e: EntryInput): { recurring: boolean } {
 }
 
 const TX_SELECT = `
-  SELECT t.*, c.name AS cat_name, c.code AS cat_code, c.color AS cat_color, a.name AS acc_name,
+  SELECT t.*, c.name AS cat_name, c.code AS cat_code, c.color AS cat_color, a.name AS acc_name, a.kind AS acc_kind,
          r.mode AS rec_mode, r.total AS rec_total, r.first_number AS rec_first, r.until_month AS rec_until
   FROM transactions t
   LEFT JOIN categories c ON c.id = t.category_id
@@ -209,9 +214,10 @@ export function accounts(includeArchived = false): Account[] {
   );
 }
 
-export function saveAccount(a: { id?: number; name: string; color: string; initial_cents: number }) {
-  if (a.id) run('UPDATE accounts SET name=?, color=?, initial_cents=? WHERE id=?', [a.name, a.color, a.initial_cents, a.id]);
-  else run('INSERT INTO accounts (name, color, initial_cents, created_at) VALUES (?, ?, ?, ?)', [a.name, a.color, a.initial_cents, nowISO()]);
+export function saveAccount(a: { id?: number; name: string; color: string; initial_cents: number; kind?: AccountKind }) {
+  const kind = a.kind ?? 'regular';
+  if (a.id) run('UPDATE accounts SET name=?, color=?, initial_cents=?, kind=? WHERE id=?', [a.name, a.color, a.initial_cents, kind, a.id]);
+  else run('INSERT INTO accounts (name, color, initial_cents, kind, created_at) VALUES (?, ?, ?, ?, ?)', [a.name, a.color, a.initial_cents, kind, nowISO()]);
 }
 
 /** Exclui se não tiver movimento; caso contrário arquiva. Retorna o que fez. */
@@ -253,7 +259,7 @@ export function monthSummary(ym: string): MonthSummary {
        COALESCE(SUM(CASE WHEN kind='income' AND status='planned' THEN amount_cents END), 0) AS incPlan,
        COALESCE(SUM(CASE WHEN kind='expense' AND status='done' THEN amount_cents END), 0) AS expDone,
        COALESCE(SUM(CASE WHEN kind='expense' AND status='planned' THEN amount_cents END), 0) AS expPlan
-     FROM transactions WHERE substr(date, 1, 7) = ?`,
+     FROM transactions WHERE substr(date, 1, 7) = ? AND ${notBenefit()}`,
     [ym],
   )!;
   const inv = first<{ v: number }>(
@@ -270,14 +276,14 @@ export function totals(): Totals {
   const r = first<{ received: number; spent: number }>(
     `SELECT COALESCE(SUM(CASE WHEN kind='income' THEN amount_cents END), 0) AS received,
             COALESCE(SUM(CASE WHEN kind='expense' THEN amount_cents END), 0) AS spent
-     FROM transactions WHERE status = 'done'`,
+     FROM transactions WHERE status = 'done' AND ${notBenefit()}`,
   )!;
   const inv = first<{ v: number }>("SELECT COALESCE(SUM(CASE WHEN kind='aporte' THEN amount_cents ELSE -amount_cents END), 0) AS v FROM asset_moves")!;
   const acc = first<{ v: number }>(
     `SELECT COALESCE(SUM(initial_cents), 0)
-       + COALESCE((SELECT SUM(CASE WHEN kind='income' THEN amount_cents ELSE -amount_cents END) FROM transactions WHERE status='done' AND account_id IS NOT NULL), 0)
-       + COALESCE((SELECT SUM(CASE WHEN kind='resgate' THEN amount_cents ELSE -amount_cents END) FROM asset_moves WHERE account_id IS NOT NULL), 0) AS v
-     FROM accounts`,
+       + COALESCE((SELECT SUM(CASE WHEN kind='income' THEN amount_cents ELSE -amount_cents END) FROM transactions WHERE status='done' AND account_id IN (SELECT id FROM accounts WHERE kind != 'benefit')), 0)
+       + COALESCE((SELECT SUM(CASE WHEN kind='resgate' THEN amount_cents ELSE -amount_cents END) FROM asset_moves WHERE account_id IN (SELECT id FROM accounts WHERE kind != 'benefit')), 0) AS v
+     FROM accounts WHERE kind != 'benefit'`,
   )!;
   const assetsV = first<{ v: number }>('SELECT COALESCE(SUM(current_cents), 0) AS v FROM assets WHERE archived = 0')!;
   return { received: r.received, spent: r.spent, invested: inv.v, inAccounts: acc.v, inAssets: assetsV.v, netWorth: acc.v + assetsV.v };
@@ -289,7 +295,7 @@ export function projectedEndOfMonth(): number {
   const end = dateInMonth(ym, 31);
   const r = first<{ v: number }>(
     `SELECT COALESCE(SUM(CASE WHEN kind='income' THEN amount_cents ELSE -amount_cents END), 0) AS v
-     FROM transactions WHERE status='planned' AND date <= ?`,
+     FROM transactions WHERE status='planned' AND date <= ? AND ${notBenefit()}`,
     [end],
   )!;
   return totals().inAccounts + r.v;
@@ -302,7 +308,7 @@ export function flowHistory(endYm: string, months = 6): FlowPoint[] {
     `SELECT substr(date, 1, 7) AS ym,
        COALESCE(SUM(CASE WHEN kind='income' THEN amount_cents END), 0) AS inc,
        COALESCE(SUM(CASE WHEN kind='expense' THEN amount_cents END), 0) AS exp
-     FROM transactions WHERE status != 'skipped' AND substr(date, 1, 7) BETWEEN ? AND ? GROUP BY ym`,
+     FROM transactions WHERE status != 'skipped' AND ${notBenefit()} AND substr(date, 1, 7) BETWEEN ? AND ? GROUP BY ym`,
     [start, endYm],
   );
   const map = new Map(rows.map((r) => [r.ym, r]));
@@ -316,8 +322,8 @@ export interface Budget { id: number; name: string; code: string; color: string;
 export function budgets(ym: string): Budget[] {
   return all<Budget>(
     `SELECT c.id, c.name, c.code, c.color, c.budget_cents AS budget,
-       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='done' AND substr(t.date,1,7)=?), 0) AS spent,
-       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='planned' AND substr(t.date,1,7)=?), 0) AS planned
+       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='done' AND ${notBenefit('t.account_id')} AND substr(t.date,1,7)=?), 0) AS spent,
+       COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.category_id=c.id AND t.status='planned' AND ${notBenefit('t.account_id')} AND substr(t.date,1,7)=?), 0) AS planned
      FROM categories c WHERE c.archived=0 AND c.kind='expense' AND c.budget_cents > 0 ORDER BY c.id`,
     [ym, ym],
   );
@@ -328,7 +334,7 @@ export function spendByCategory(ym: string): CatSpend[] {
   return all<CatSpend>(
     `SELECT c.id, c.name, c.code, c.color, SUM(t.amount_cents) AS total
      FROM transactions t JOIN categories c ON c.id = t.category_id
-     WHERE t.kind='expense' AND t.status != 'skipped' AND substr(t.date,1,7)=?
+     WHERE t.kind='expense' AND t.status != 'skipped' AND ${notBenefit('t.account_id')} AND substr(t.date,1,7)=?
      GROUP BY c.id ORDER BY total DESC`,
     [ym],
   );
@@ -431,6 +437,11 @@ export function goalDeposit(id: number, cents: number) {
 }
 
 /** Marca como concluída as metas que bateram o alvo; retorna as recém-concluídas. */
+/** Quanto está marcado como guardado nas missões manuais (não ligadas a ativo). */
+export function reservedInGoals(): number {
+  return first<{ v: number }>('SELECT COALESCE(SUM(saved_cents), 0) AS v FROM goals WHERE asset_id IS NULL')!.v;
+}
+
 export function settleGoals(): Goal[] {
   const done = all<Goal>(`${GOAL_SELECT} WHERE g.completed_at IS NULL`).filter((g) => g.progress_cents >= g.target_cents && g.target_cents > 0);
   done.forEach((g) => run('UPDATE goals SET completed_at = ? WHERE id = ?', [nowISO(), g.id]));

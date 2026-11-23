@@ -13,7 +13,7 @@ import { Appear, Chip, Empty, IconBtn, Panel, Row, SectionTitle, T } from '../ui
 import { MoveRow, TxRow } from '../ui/rows';
 import { buzz } from '../game/actions';
 
-type Filter = 'all' | 'income' | 'expense' | 'invest' | 'planned';
+type Filter = 'all' | 'income' | 'expense' | 'invest' | 'planned' | 'benefit';
 type Item = { k: 'tx'; date: string; id: number; tx: R.Tx } | { k: 'mv'; date: string; id: number; mv: R.AssetMove };
 
 export function LedgerScreen() {
@@ -43,6 +43,7 @@ export function LedgerScreen() {
       if (filter === 'invest') return i.k === 'mv';
       if (i.k !== 'tx') return false;
       if (filter === 'planned') return i.tx.status === 'planned';
+      if (filter === 'benefit') return i.tx.acc_kind === 'benefit';
       return i.tx.kind === filter;
     });
     items.sort((a, b) => (a.date === b.date ? b.id - a.id : a.date < b.date ? 1 : -1));
@@ -54,7 +55,7 @@ export function LedgerScreen() {
         out.push(g);
       }
       g.items.push(it);
-      if (it.k === 'tx') g.net += it.tx.kind === 'income' ? it.tx.amount_cents : -it.tx.amount_cents;
+      if (it.k === 'tx' && it.tx.acc_kind !== 'benefit') g.net += it.tx.kind === 'income' ? it.tx.amount_cents : -it.tx.amount_cents;
     }
     return out;
   }, [d, filter]);
@@ -134,6 +135,7 @@ export function LedgerScreen() {
         <Chip label="Despesas" color={C.expense} active={filter === 'expense'} onPress={() => setFilter('expense')} />
         <Chip label="Aportes" color={C.invest} active={filter === 'invest'} onPress={() => setFilter('invest')} />
         <Chip label="Previstos" color={C.warn} active={filter === 'planned'} onPress={() => setFilter('planned')} />
+        <Chip label="Vales" color={C.sub} active={filter === 'benefit'} onPress={() => setFilter('benefit')} />
       </ScrollView>
 
       {groups.length === 0 ? (

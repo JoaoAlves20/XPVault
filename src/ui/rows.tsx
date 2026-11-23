@@ -27,6 +27,11 @@ export function TxRow({ tx, onPress, onConfirm, showDate }: { tx: Tx; onPress: (
                 <Text style={[styles.badgeText, { color: C.goal }]}>{badge}</Text>
               </View>
             ) : null}
+            {tx.acc_kind === 'benefit' ? (
+              <View style={[styles.badge, { borderColor: alpha(C.sub, 0.5) }]}>
+                <Text style={[styles.badgeText, { color: C.sub }]}>VALE</Text>
+              </View>
+            ) : null}
             {planned ? (
               <View style={[styles.badge, { borderColor: alpha(C.warn, 0.5) }]}>
                 <Text style={[styles.badgeText, { color: C.warn }]}>PREVISTO</Text>

@@ -17,7 +17,7 @@ import { Icon } from '../ui/Icon';
 type Mode = 'income' | 'expense' | 'invest';
 const MODE_COLOR: Record<Mode, string> = { income: C.income, expense: C.expense, invest: C.invest };
 
-export function AddEntrySheet({ mode: initMode, editId, assetId, moveKind }: { mode?: Mode; editId?: number; assetId?: number; moveKind?: 'aporte' | 'resgate' }) {
+export function AddEntrySheet({ mode: initMode, editId, assetId, moveKind, accountId }: { mode?: Mode; editId?: number; assetId?: number; moveKind?: 'aporte' | 'resgate'; accountId?: number }) {
   const nav = useNav();
   const kb = useKeyboardHeight();
   const editing = useMemo(() => (editId ? R.getTx(editId) : null), [editId]);
@@ -29,7 +29,8 @@ export function AddEntrySheet({ mode: initMode, editId, assetId, moveKind }: { m
   const [cents, setCents] = useState(editing?.amount_cents ?? 0);
   const [desc, setDesc] = useState(editing?.description ?? '');
   const [catId, setCatId] = useState<number | null>(editing?.category_id ?? null);
-  const [accId, setAccId] = useState<number | null>(editing?.account_id ?? accs[0]?.id ?? null);
+  const firstRegular = accs.find((a) => a.kind === 'regular')?.id ?? null;
+  const [accId, setAccId] = useState<number | null>(editing?.account_id ?? accountId ?? firstRegular);
   const [date, setDate] = useState(editing?.date ?? todayISO());
   const [status, setStatus] = useState<'done' | 'planned'>(editing?.status === 'planned' ? 'planned' : 'done');
   const [repeat, setRepeat] = useState<'none' | 'forever' | 'count' | 'until'>('none');
@@ -53,6 +54,13 @@ export function AddEntrySheet({ mode: initMode, editId, assetId, moveKind }: { m
   useEffect(() => {
     if (!assetSel && assets.length) setAssetSel(assets[0].id);
   }, [assets, assetSel]);
+
+  // Vales não podem ser origem/destino de aporte.
+  const shownAccs = mode === 'invest' ? accs.filter((a) => a.kind === 'regular') : accs;
+  useEffect(() => {
+    if (mode === 'invest' && !shownAccs.some((a) => a.id === accId)) setAccId(firstRegular);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
 
   const pickDate = (d: string) => {
     setDate(d);
@@ -176,10 +184,20 @@ export function AddEntrySheet({ mode: initMode, editId, assetId, moveKind }: { m
 
         <Block label={mode === 'invest' ? (mk === 'aporte' ? 'Sai da conta' : 'Entra na conta') : 'Conta'}>
           <View style={styles.wrap}>
-            {accs.map((a) => (
-              <Chip key={a.id} label={a.name} color={a.color} active={accId === a.id} onPress={() => setAccId(a.id)} />
+            {shownAccs.map((a) => (
+              <Chip
+                key={a.id}
+                label={a.name}
+                color={a.color}
+                active={accId === a.id}
+                onPress={() => setAccId(a.id)}
+                leading={a.kind === 'benefit' ? <Text style={{ fontFamily: F.monoBold, fontSize: 9, color: accId === a.id ? a.color : C.mute, letterSpacing: 1 }}>VALE</Text> : undefined}
+              />
             ))}
           </View>
+          {accs.find((a) => a.id === accId)?.kind === 'benefit' ? (
+            <T v="small" color={C.mute}>Vale: entra no saldo do vale, mas fica fora do patrimônio e dos totais.</T>
+          ) : null}
         </Block>
 
         <Block label="Data">

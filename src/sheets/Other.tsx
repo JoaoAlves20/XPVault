@@ -334,6 +334,7 @@ export function SettingsSheet() {
               <View style={styles.listRow}>
                 <View style={{ width: 10, height: 10, backgroundColor: a.color, transform: [{ rotate: '45deg' }] }} />
                 <Text style={styles.listName}>{a.name}</Text>
+                {a.kind === 'benefit' ? <Text style={{ fontFamily: F.monoBold, fontSize: 9, letterSpacing: 1, color: C.mute }}>VALE</Text> : null}
                 <Text style={{ fontFamily: F.monoBold, fontSize: 14, color: a.balance >= 0 ? C.text : C.expense }}>{fmt(a.balance)}</Text>
               </View>
             </Press>
@@ -384,7 +385,7 @@ export function SettingsSheet() {
             )
           }
         />
-        <T v="small" color={C.mute} style={{ textAlign: 'center', marginTop: 18 }}>XPVault v1.0 · offline-first</T>
+        <T v="small" color={C.mute} style={{ textAlign: 'center', marginTop: 18 }}>XPVault v1.1 · offline-first</T>
       </View>
     </SheetFrame>
   );
@@ -455,16 +456,26 @@ export function AccountSheet({ id }: { id?: number }) {
   const [name, setName] = useState(existing?.name ?? '');
   const [color, setColor] = useState(existing?.color ?? SWATCHES[2]);
   const [initial, setInitial] = useState(existing?.initial_cents ?? 0);
+  const [kind, setKind] = useState<R.AccountKind>(existing?.kind ?? 'regular');
 
   const save = () => {
     if (!name.trim()) return toast('Dê um nome à conta', C.warn);
-    A.write(() => R.saveAccount({ id, name: name.trim(), color, initial_cents: initial }));
+    A.write(() => R.saveAccount({ id, name: name.trim(), color, initial_cents: initial, kind }));
     nav.close();
   };
   return (
     <SheetFrame title={id ? 'Editar conta' : 'Nova conta'} accent={color}>
       <View style={{ gap: 18 }}>
-        <Field label="Nome" value={name} onChange={setName} placeholder="Ex.: Nubank, Itaú, Carteira" autoFocus={!id} />
+        <Field label="Nome" value={name} onChange={setName} placeholder={kind === 'benefit' ? 'Ex.: Vale Refeição' : 'Ex.: Nubank, Itaú, Carteira'} autoFocus={!id} />
+        <View style={{ gap: 10 }}>
+          <T v="label" color={C.mute}>Tipo</T>
+          <Segmented value={kind} onChange={setKind} options={[{ id: 'regular', label: 'Conta / carteira' }, { id: 'benefit', label: 'Vale (VR/VT/VA)' }]} />
+          <T v="small" color={C.mute}>
+            {kind === 'benefit'
+              ? 'Vales têm saldo próprio, mas ficam fora do patrimônio, do "livre para gastar" e dos totais de recebido/gasto.'
+              : 'Entra no patrimônio e nos totais.'}
+          </T>
+        </View>
         <View style={{ gap: 6 }}>
           <MoneyField label="Saldo inicial" value={initial} onChange={setInitial} />
           <T v="small" color={C.mute}>Quanto tinha nesta conta antes de começar a usar o XPVault.</T>

@@ -107,7 +107,7 @@ function Main() {
 function SheetView({ sheet: s }: { sheet: Sheet }) {
   switch (s.t) {
     case 'add':
-      return <AddEntrySheet mode={s.mode} editId={s.editId} assetId={s.assetId} moveKind={s.moveKind} />;
+      return <AddEntrySheet mode={s.mode} editId={s.editId} assetId={s.assetId} moveKind={s.moveKind} accountId={s.accountId} />;
     case 'tx':
       return <TxSheet id={s.id} />;
     case 'asset':

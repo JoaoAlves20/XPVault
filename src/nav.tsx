@@ -8,7 +8,7 @@ import { T, IconBtn } from './ui/kit';
 export type Tab = 'home' | 'ledger' | 'vault' | 'quests';
 
 export type Sheet =
-  | { t: 'add'; mode?: 'income' | 'expense' | 'invest'; editId?: number; assetId?: number; moveKind?: 'aporte' | 'resgate' }
+  | { t: 'add'; mode?: 'income' | 'expense' | 'invest'; editId?: number; assetId?: number; moveKind?: 'aporte' | 'resgate'; accountId?: number }
   | { t: 'tx'; id: number }
   | { t: 'assetEdit'; id?: number }
   | { t: 'asset'; id: number }

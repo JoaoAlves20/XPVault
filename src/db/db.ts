@@ -10,7 +10,7 @@ export const first = <T>(sql: string, params: P = []) => db.getFirstSync<T>(sql,
 export const run = (sql: string, params: P = []) => db.runSync(sql, params);
 export const tx = (fn: () => void) => db.withTransactionSync(fn);
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const SCHEMA_V1 = `
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -160,7 +160,8 @@ export function initDb() {
     db.execSync(SCHEMA_V1);
     seed();
   }
-  // Migrações futuras: if (current < 2) { ... }
+  if (current < 2) migrateV2();
+  // Próximas migrações: if (current < 3) { ... }
   db.runSync("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)", [String(SCHEMA_VERSION)]);
 }
 
@@ -174,6 +175,25 @@ function seed() {
     for (const [name, kind, code, color] of DEFAULT_CATEGORIES) {
       run('INSERT INTO categories (name, kind, code, color) VALUES (?, ?, ?, ?)', [name, kind, code, color]);
     }
+  });
+}
+
+const hasColumn = (table: string, col: string) =>
+  db.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`).some((c) => c.name === col);
+
+/** v2: contas de benefício (VR/VT/VA), que ficam fora do patrimônio e dos totais. */
+function migrateV2() {
+  tx(() => {
+    if (!hasColumn('accounts', 'kind')) db.execSync("ALTER TABLE accounts ADD COLUMN kind TEXT NOT NULL DEFAULT 'regular'");
+    const now = nowISO();
+    const nBenefit = first<{ n: number }>("SELECT COUNT(*) AS n FROM accounts WHERE kind = 'benefit'")!.n;
+    if (!nBenefit) {
+      for (const [name, color] of [['Vale Refeição', '#FF9F43'], ['Vale Transporte', '#7AA2FF'], ['Vale Alimentação', '#3DF5B0']]) {
+        run("INSERT INTO accounts (name, color, initial_cents, kind, created_at) VALUES (?, ?, 0, 'benefit', ?)", [name, color, now]);
+      }
+    }
+    const hasBen = first<{ n: number }>("SELECT COUNT(*) AS n FROM categories WHERE kind = 'income' AND code = 'BEN'")!.n;
+    if (!hasBen) run("INSERT INTO categories (name, kind, code, color) VALUES ('Benefícios', 'income', 'BEN', '#FF9F43')");
   });
 }
 

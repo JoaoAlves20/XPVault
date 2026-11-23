@@ -33,9 +33,12 @@ export function HomeScreen() {
     goal: R.goals().find((g) => !g.completed_at) ?? null,
     name: getMeta('player_name') ?? 'Jogador',
     count: R.counts().txs,
+    reserved: R.reservedInGoals(),
+    benefits: R.accounts().filter((a) => a.kind === 'benefit'),
   }));
 
   const monthNet = d.month.incDone - d.month.expDone;
+  const free = d.tot.inAccounts - d.reserved;
 
   return (
     <ScrollView contentContainerStyle={{ paddingTop: insets.top + 14, paddingHorizontal: 16, paddingBottom: DOCK_SPACE + insets.bottom + 10 }} showsVerticalScrollIndicator={false}>
@@ -68,6 +71,21 @@ export function HomeScreen() {
         <VaultCore inAccounts={d.tot.inAccounts} inAssets={d.tot.inAssets} netWorth={d.tot.netWorth} monthNet={monthNet} />
       </Appear>
 
+      {/* Livre para gastar */}
+      <Appear delay={120}>
+        <Panel c={12} pad={14} stroke={alpha(C.income, 0.35)} style={{ marginBottom: 14 }}>
+          <Row gap={12}>
+            <View style={{ flex: 1, gap: 3 }}>
+              <T v="label" color={C.income}>Livre para gastar</T>
+              <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.mute }}>
+                {d.reserved > 0 ? `contas − ${fmt(d.reserved, { compact: true })} reservado em missões` : 'saldo das contas, sem vales e investimentos'}
+              </Text>
+            </View>
+            <AnimatedNumber value={free} style={{ fontFamily: F.monoBold, fontSize: 20, color: free >= 0 ? C.income : C.expense, maxWidth: 170 }} />
+          </Row>
+        </Panel>
+      </Appear>
+
       {/* Balanço */}
       <Appear delay={160}>
         <Panel accent={C.gold} style={{ gap: 14 }}>
@@ -94,6 +112,29 @@ export function HomeScreen() {
           )}
         </Panel>
       </Appear>
+
+      {/* Vales (fora do patrimônio) */}
+      {d.benefits.length ? (
+        <Appear delay={200}>
+          <SectionTitle title="Vales · fora do total" />
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {d.benefits.map((b) => (
+              <Press key={b.id} style={{ flex: 1 }} onPress={() => nav.open({ t: 'add', mode: 'expense', accountId: b.id })} onLongPress={() => nav.open({ t: 'account', id: b.id })}>
+                <View style={[styles.vale, { borderColor: alpha(b.color, 0.35) }]}>
+                  <Row gap={6}>
+                    <View style={{ width: 7, height: 7, backgroundColor: b.color, transform: [{ rotate: '45deg' }] }} />
+                    <Text style={{ fontFamily: F.monoBold, fontSize: 13, color: b.color, letterSpacing: 1 }}>{initials(b.name)}</Text>
+                  </Row>
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontFamily: F.monoBold, fontSize: 15, color: b.balance >= 0 ? C.text : C.expense, marginTop: 6 }}>
+                    {fmt(b.balance, { compact: true })}
+                  </Text>
+                  <Text style={{ fontFamily: F.mono, fontSize: 9.5, color: C.mute, marginTop: 2 }}>toque: gastar</Text>
+                </View>
+              </Press>
+            ))}
+          </View>
+        </Appear>
+      ) : null}
 
       {d.count === 0 ? (
         <Appear delay={220}>
@@ -295,7 +336,15 @@ function Legend({ color, label, value }: { color: string; label: string; value: 
   );
 }
 
+/** "Vale Refeição" → "VR"; nomes curtos ficam como estão. */
+export function initials(name: string): string {
+  const words = name.split(/\s+/).filter((w) => w && !/^(de|da|do|das|dos|e)$/i.test(w));
+  if (name.length <= 4 || words.length < 2) return name.slice(0, 4).toUpperCase();
+  return words.map((w) => w[0]).join('').slice(0, 3).toUpperCase();
+}
+
 const styles = StyleSheet.create({
+  vale: { borderWidth: 1, backgroundColor: C.panel, padding: 10 },
   streak: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: C.line, paddingHorizontal: 8, paddingVertical: 4, backgroundColor: C.panel },
   stat: { flex: 1, borderWidth: 1, padding: 10, backgroundColor: C.bg2 },
   projection: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: C.line, paddingTop: 12 },
