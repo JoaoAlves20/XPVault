@@ -53,7 +53,8 @@ jobs:
             echo "$KEYSTORE_B64" | base64 -d > android/app/debug.keystore
             echo "Usando a chave própria do XPVault."
           else
-            echo "::warning::Segredo XPV_KEYSTORE_B64 ausente — APK assinado com a chave padrão do template."
+            echo "::error::Segredo XPV_KEYSTORE_B64 ausente. Cadastre a chave em Settings > Secrets and variables > Actions (veja o README) e rode o workflow de novo."
+            exit 1
           fi
 
       - name: Compilar APK

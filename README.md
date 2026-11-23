@@ -69,6 +69,15 @@ O workflow [`.github/workflows/build-apk.yml`](.github/workflows/build-apk.yml):
 
 Use sempre a mesma chave: com outra assinatura o Android não deixa instalar por cima, e seria preciso desinstalar (perdendo os dados).
 
+Para cadastrar o segredo, a partir de um PC que tenha o arquivo da chave (PowerShell, na pasta do projeto):
+
+```powershell
+$b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes("$PWD\.privado\xpvault-release.keystore"))
+gh secret set XPV_KEYSTORE_B64 --repo JoaoAlves20/XPVault --body $b64
+```
+
+Sem o segredo, o workflow falha de propósito em vez de gerar um APK com outra assinatura.
+
 Ao mudar o schema do banco, adicione uma migração em `initDb()` (`src/db/db.ts`), incrementando `SCHEMA_VERSION`. Nunca altere o `SCHEMA_V1` já publicado.
 
 ## Roadmap
