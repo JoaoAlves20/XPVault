@@ -1,0 +1,93 @@
+name: Build APK
+
+# Todo push na main gera um APK novo e atualiza a release "latest".
+# Tags v* (ex.: v1.1.0) geram também uma release fixa daquela versão.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      XPV_BUILD_NUMBER: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Checar tipos
+        run: npx tsc --noEmit
+
+      - name: Gerar projeto Android
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Chave de assinatura
+        env:
+          KEYSTORE_B64: ${{ secrets.XPV_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/debug.keystore
+            echo "Usando a chave própria do XPVault."
+          else
+            echo "::warning::Segredo XPV_KEYSTORE_B64 ausente — APK assinado com a chave padrão do template."
+          fi
+
+      - name: Compilar APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+
+      - name: Nomear APK
+        id: apk
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          NAME="XPVault-v${VERSION}-build${XPV_BUILD_NUMBER}.apk"
+          mkdir -p out
+          cp android/app/build/outputs/apk/release/app-release.apk "out/$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: out/*.apk
+
+      - name: Publicar release "latest"
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest out/*.apk \
+            --title "XPVault · último build (#${XPV_BUILD_NUMBER})" \
+            --notes "APK gerado automaticamente a partir do commit ${GITHUB_SHA::7} na main. Baixe o arquivo .apk abaixo e instale no celular." \
+            --target "$GITHUB_SHA" --prerelease
+
+      - name: Publicar release da versão
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" out/*.apk --title "XPVault $GITHUB_REF_NAME" --generate-notes
